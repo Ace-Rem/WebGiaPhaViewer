@@ -1,0 +1,5 @@
+node_modules/
+family-data.json
+family-data.*.json
+*.plain.json
+.DS_Store

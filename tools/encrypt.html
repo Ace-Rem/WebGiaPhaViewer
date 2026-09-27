@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Family Data Encryptor</title>
+    <style>
+      :root { --bg:#f5f1e9; --surface:#fffdf9; --text:#29302c; --muted:#7b8179; --accent:#3c5d4f; --soft:#dfe9de; --line:rgba(46,61,53,.16); --danger:#a05249; }
+      * { box-sizing:border-box; } body { margin:0; min-height:100vh; color:var(--text); background:var(--bg); font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+      main { width:min(980px,calc(100% - 32px)); margin:0 auto; padding:52px 0 80px; } .eyebrow { color:var(--accent); font-size:10px; font-weight:700; letter-spacing:.15em; } h1 { margin:14px 0 8px; font:400 46px/1.05 Georgia,serif; } .intro { margin:0 0 30px; color:var(--muted); }
+      .workspace { display:grid; grid-template-columns:1.4fr .8fr; gap:16px; } .panel { padding:22px; border:1px solid var(--line); border-radius:18px; background:var(--surface); box-shadow:0 14px 35px rgba(35,45,39,.07); } label { display:block; margin:0 0 8px; color:var(--muted); font-size:11px; font-weight:700; } textarea,input { width:100%; border:1px solid var(--line); border-radius:10px; outline:0; color:var(--text); background:#fff; font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; } textarea { min-height:490px; padding:14px; resize:vertical; } input { padding:13px; } textarea:focus,input:focus { border-color:var(--accent); box-shadow:0 0 0 4px rgba(60,93,79,.12); } .field { margin-top:18px; } .actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:22px; } button { min-height:43px; padding:0 17px; border:1px solid transparent; border-radius:9px; color:#fff; background:var(--accent); font-weight:700; cursor:pointer; } button.secondary { color:var(--accent); border-color:var(--line); background:transparent; } button:disabled { cursor:not-allowed; opacity:.55; } .status { min-height:170px; margin-top:18px; padding:15px; border-radius:10px; color:var(--muted); background:#f0ebe1; font-size:12px; } .status ul { margin:8px 0 0; padding-left:20px; } .status.success { color:var(--accent); background:var(--soft); } .status.error { color:var(--danger); background:#f4e4df; } .tip { margin-top:23px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; } code { padding:2px 4px; border-radius:4px; background:#eee8dc; font-size:11px; } .download { display:none; margin-top:10px; } .download.show { display:block; } @media(max-width:720px){ main{padding-top:32px}.workspace{grid-template-columns:1fr}textarea{min-height:390px}h1{font-size:39px}.panel{padding:17px} }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="eyebrow">CÔNG CỤ OFFLINE · WEB CRYPTO API</span>
+      <h1>Family Data Encryptor</h1>
+      <p class="intro">Kiểm tra và mã hóa JSON gia phả ngay trên máy của bạn. Công cụ này không gửi dữ liệu đi đâu.</p>
+      <div class="workspace">
+        <section class="panel">
+          <label for="jsonInput">Dữ liệu JSON nguồn</label>
+          <textarea id="jsonInput" spellcheck="false" placeholder="Dán nội dung family-data.json vào đây…"></textarea>
+          <div class="field"><label for="passwordInput">Mật khẩu giải mã</label><input id="passwordInput" type="password" autocomplete="new-password" placeholder="Tối thiểu 8 ký tự" /></div>
+          <div class="field"><label for="confirmInput">Xác nhận mật khẩu</label><input id="confirmInput" type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu" /></div>
+          <div class="actions"><button id="validateButton" class="secondary">Kiểm tra JSON</button><button id="encryptButton">Mã hóa & tải xuống</button></div>
+          <div id="status" class="status">Chưa có dữ liệu để kiểm tra.</div>
+        </section>
+        <aside class="panel">
+          <span class="eyebrow">QUY TRÌNH</span>
+          <div class="tip"><strong>1. Chuẩn bị</strong><br />Tạo hoặc chỉnh sửa file JSON nguồn trên máy cá nhân.</div>
+          <div class="tip"><strong>2. Kiểm tra</strong><br />Dán JSON vào ô bên trái. Các lỗi tham chiếu nghiêm trọng sẽ chặn việc mã hóa.</div>
+          <div class="tip"><strong>3. Mã hóa</strong><br />Mật khẩu được dùng để tạo khóa PBKDF2 rồi mã hóa bằng AES-GCM.</div>
+          <div class="tip"><strong>4. Cập nhật</strong><br />Đặt file tải xuống vào thư mục gốc website với tên <code>data.enc</code>.</div>
+          <div class="tip"><strong>Lưu ý</strong><br />Hãy giữ lại JSON nguồn và mật khẩu ở nơi backup riêng. Không commit JSON plaintext lên repository public.</div>
+          <a id="downloadLink" class="download" download="data.enc">Tải lại file data.enc</a>
+        </aside>
+      </div>
+    </main>
+    <script src="./encrypt.js"></script>
+  </body>
+</html>
