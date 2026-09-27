@@ -83,6 +83,7 @@ let profilePersonId = null;
 let lineageMode = 'all';
 let drawerHistory = [];
 let drawerTouchStart = null;
+let suppressBackdropClick = false;
 let searchMatches = [];
 let searchCursor = -1;
 let toastTimer = null;
@@ -265,15 +266,43 @@ function renderDetail(id) {
   elements.drawerBack.hidden = drawerHistory.length === 0;
 }
 
+let bodyScrollLock = null;
+
+function lockPageScroll() {
+  if (!window.matchMedia?.("(max-width: 700px)").matches || bodyScrollLock) return;
+  const body = document.body;
+  bodyScrollLock = { y: window.scrollY, position: body.style.position, top: body.style.top, width: body.style.width, overflow: body.style.overflow };
+  body.classList.add("is-drawer-open");
+  body.style.position = "fixed";
+  body.style.top = "-" + bodyScrollLock.y + "px";
+  body.style.width = "100%";
+  body.style.overflow = "hidden";
+}
+
+function unlockPageScroll() {
+  if (!bodyScrollLock) return;
+  const body = document.body;
+  const scrollY = bodyScrollLock.y;
+  body.classList.remove("is-drawer-open");
+  body.style.position = bodyScrollLock.position;
+  body.style.top = bodyScrollLock.top;
+  body.style.width = bodyScrollLock.width;
+  body.style.overflow = bodyScrollLock.overflow;
+  bodyScrollLock = null;
+  window.scrollTo(0, scrollY);
+}
+
 function openDrawerPanel() {
   elements.detailDrawer.classList.add('is-open');
   elements.detailDrawer.setAttribute('aria-hidden', 'false');
+  lockPageScroll();
   setTimeout(() => elements.closeDrawer.focus(), 100);
 }
 
 function closeDrawerPanel() {
   elements.detailDrawer.classList.remove('is-open');
   elements.detailDrawer.setAttribute('aria-hidden', 'true');
+  unlockPageScroll();
   profilePersonId = null;
 }
 
@@ -457,6 +486,7 @@ elements.searchInput.addEventListener('keydown', (event) => {
 });
 elements.closeDrawer.addEventListener('click', closeDrawerPanel);
 elements.drawerBackdrop.addEventListener('click', (event) => {
+  if (suppressBackdropClick) { suppressBackdropClick = false; return; }
   const point = { x: event.clientX, y: event.clientY };
   closeDrawerPanel();
   requestAnimationFrame(() => {
@@ -464,20 +494,28 @@ elements.drawerBackdrop.addEventListener('click', (event) => {
     if (node) selectPerson(node.dataset.personId);
   });
 });
-elements.drawerTop.addEventListener("pointerdown", (event) => {
-  if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
-  drawerTouchStart = { x: event.clientX, y: event.clientY };
-  elements.drawerTop.setPointerCapture?.(event.pointerId);
-}, { passive: true });
 const finishDrawerSwipe = (event) => {
   if (!drawerTouchStart) return;
   const deltaX = event.clientX - drawerTouchStart.x;
   const deltaY = event.clientY - drawerTouchStart.y;
   drawerTouchStart = null;
-  if (deltaY > 55 && deltaY > Math.abs(deltaX) * 1.1) closeDrawerPanel();
+  if (deltaY > 55 && deltaY > Math.abs(deltaX) * 1.1) {
+    suppressBackdropClick = true;
+    window.setTimeout(() => { suppressBackdropClick = false; }, 350);
+    closeDrawerPanel();
+  }
 };
+const startDrawerSwipe = (event) => {
+  if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+  drawerTouchStart = { x: event.clientX, y: event.clientY };
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+};
+elements.drawerTop.addEventListener("pointerdown", startDrawerSwipe);
 elements.drawerTop.addEventListener("pointerup", finishDrawerSwipe);
 elements.drawerTop.addEventListener("pointercancel", () => { drawerTouchStart = null; });
+elements.drawerBackdrop.addEventListener("pointerdown", startDrawerSwipe);
+elements.drawerBackdrop.addEventListener("pointerup", finishDrawerSwipe);
+elements.drawerBackdrop.addEventListener("pointercancel", () => { drawerTouchStart = null; });
 elements.drawerBack.addEventListener('click', () => { const previousId = drawerHistory.pop(); if (previousId) selectPerson(previousId, { pushHistory: false, fromHistory: true }); });
 elements.clearFocusButton.addEventListener('click', () => { selectedId = null; lineageMode = 'all'; renderer?.updateFocus(null, null); renderer?.setActiveGeneration(null); elements.clearFocusButton.hidden = true; elements.treeContext.querySelector('span:last-child').textContent = 'Toàn bộ gia phả'; closeDrawerPanel(); });
 function bindCanvasControl(button, action) {
