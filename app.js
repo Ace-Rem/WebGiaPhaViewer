@@ -480,11 +480,26 @@ elements.drawerTop.addEventListener("pointerup", finishDrawerSwipe);
 elements.drawerTop.addEventListener("pointercancel", () => { drawerTouchStart = null; });
 elements.drawerBack.addEventListener('click', () => { const previousId = drawerHistory.pop(); if (previousId) selectPerson(previousId, { pushHistory: false, fromHistory: true }); });
 elements.clearFocusButton.addEventListener('click', () => { selectedId = null; lineageMode = 'all'; renderer?.updateFocus(null, null); renderer?.setActiveGeneration(null); elements.clearFocusButton.hidden = true; elements.treeContext.querySelector('span:last-child').textContent = 'Toàn bộ gia phả'; closeDrawerPanel(); });
-$('#fitButton').addEventListener('click', () => renderer?.fit());
-elements.zoomInButton.addEventListener('click', () => renderer?.zoomAt(1.18));
-elements.zoomOutButton.addEventListener('click', () => renderer?.zoomAt(.84));
-elements.homeButton.addEventListener('click', () => { const rootId = data?.family?.rootPersonId; if (rootId && graph.byId.has(rootId)) { selectPerson(rootId, { openDrawer: false, center: true }); } else renderer?.fit(); });
-elements.fullscreenButton.addEventListener("click", toggleTreeFullscreen);
+function bindCanvasControl(button, action) {
+  let pointerHandledAt = 0;
+  button.addEventListener("pointerup", (event) => {
+    if (event.pointerType === "mouse") return;
+    event.preventDefault();
+    event.stopPropagation();
+    pointerHandledAt = performance.now();
+    action();
+  }, { passive: false });
+  button.addEventListener("click", (event) => {
+    if (performance.now() - pointerHandledAt < 500) { event.preventDefault(); return; }
+    action();
+  });
+}
+
+bindCanvasControl(document.querySelector("#fitButton"), () => renderer?.fit());
+bindCanvasControl(elements.zoomInButton, () => renderer?.zoomAt(1.18));
+bindCanvasControl(elements.zoomOutButton, () => renderer?.zoomAt(.84));
+bindCanvasControl(elements.homeButton, () => { const rootId = data?.family?.rootPersonId; if (rootId && graph.byId.has(rootId)) { selectPerson(rootId, { openDrawer: false, center: true }); } else renderer?.fit(); });
+bindCanvasControl(elements.fullscreenButton, toggleTreeFullscreen);
 document.addEventListener("fullscreenchange", updateFullscreenButton);
 document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
 updateFullscreenButton();

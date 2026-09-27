@@ -195,8 +195,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .generation-rail-button:hover { color: var(--text-strong); background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
 .generation-rail-button.active { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 72%, transparent); }
 .generation-rail-button.active::before { height: 32px; background: var(--accent); }
-.canvas-controls { position: absolute; z-index: 4; right: 18px; bottom: 18px; display: flex; align-items: center; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--surface) 90%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(10px); }
-.canvas-control { display: grid; place-items: center; width: 35px; height: 35px; border: 0; border-radius: 7px; color: var(--muted-strong); background: transparent; cursor: pointer; }
+.canvas-controls { position: absolute; z-index: 8; right: 18px; bottom: 18px; display: flex; align-items: center; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--surface) 90%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(10px); }
+.canvas-control { display: grid; place-items: center; position: relative; z-index: 1; width: 35px; height: 35px; touch-action: manipulation; border: 0; border-radius: 7px; color: var(--muted-strong); background: transparent; cursor: pointer; }
 .canvas-control:hover { color: var(--text-strong); background: var(--surface-muted); }
 .canvas-control .icon { width: 16px; height: 16px; }
 .control-rule { width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
