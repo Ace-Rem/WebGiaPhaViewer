@@ -42,6 +42,19 @@ export function buildFamilyGraph(data) {
     parentIds.set(member.id, parents);
     parents.forEach((parentId) => childrenByParent.get(parentId).push(member.id));
   });
+  const unitRelatedIds = new Map(members.map((member) => [member.id, new Set()]));
+  const linkUnitMembers = (leftId, rightId) => {
+    if (!leftId || !rightId || leftId === rightId || !byId.has(leftId) || !byId.has(rightId)) return;
+    unitRelatedIds.get(leftId).add(rightId);
+    unitRelatedIds.get(rightId).add(leftId);
+  };
+  members.forEach((member) => member.spouseIds.forEach((spouseId) => linkUnitMembers(member.id, spouseId)));
+  members.forEach((member) => {
+    const parents = parentIds.get(member.id) || [];
+    for (let index = 0; index < parents.length; index += 1) {
+      for (let next = index + 1; next < parents.length; next += 1) linkUnitMembers(parents[index], parents[next]);
+    }
+  });
   const siblingsByMember = new Map(members.map((member) => [member.id, new Set(member.siblingIds)]));
   const addSibling = (leftId, rightId) => {
     if (!leftId || !rightId || leftId === rightId || !byId.has(leftId) || !byId.has(rightId)) return;
@@ -68,16 +81,26 @@ export function buildFamilyGraph(data) {
     siblingGroupIndex += 1;
   });
   const memberIndex = new Map(members.map((member, index) => [member.id, index]));
-  const compareMembers = (left, right) => {
-    const groupDifference = siblingGroupByMember.get(left.id) - siblingGroupByMember.get(right.id);
-    if (groupDifference) return groupDifference;
-    const leftOrder = getSiblingOrder(left);
-    const rightOrder = getSiblingOrder(right);
+  const parentSiblingOrder = (member) => {
+    const orders = (parentIds.get(member.id) || []).map((parentId) => getSiblingOrder(byId.get(parentId))).filter((order) => order !== null);
+    return orders.length ? Math.max(...orders) : null;
+  };
+  const compareAscendingOrder = (leftOrder, rightOrder) => {
     if (leftOrder !== null && rightOrder !== null && leftOrder !== rightOrder) return leftOrder - rightOrder;
     if (leftOrder !== null && rightOrder === null) return -1;
     if (leftOrder === null && rightOrder !== null) return 1;
-    return (memberIndex.get(left.id) - memberIndex.get(right.id)) || left.fullName.localeCompare(right.fullName, 'vi');
+    return 0;
   };
+  const compareMembers = (left, right) => {
+    const parentOrderDifference = compareAscendingOrder(parentSiblingOrder(left), parentSiblingOrder(right));
+    if (parentOrderDifference) return parentOrderDifference;
+    const orderDifference = compareAscendingOrder(getSiblingOrder(left), getSiblingOrder(right));
+    if (orderDifference) return orderDifference;
+    const groupDifference = siblingGroupByMember.get(left.id) - siblingGroupByMember.get(right.id);
+    if (groupDifference) return groupDifference;
+    return (memberIndex.get(left.id) - memberIndex.get(right.id)) || left.fullName.localeCompare(right.fullName, "vi");
+  };
+  childrenByParent.forEach((children) => children.sort((leftId, rightId) => compareMembers(byId.get(leftId), byId.get(rightId))));
   const generations = new Map();
   const resolving = new Set();
   const resolveGeneration = (id) => {
@@ -112,11 +135,11 @@ export function buildFamilyGraph(data) {
       if (seen.has(member.id)) return;
       const unitMembers = [member];
       seen.add(member.id);
-      member.spouseIds.forEach((spouseId) => {
-        const spouse = byId.get(spouseId);
-        if (spouse && generations.get(spouse.id) === generation && !seen.has(spouse.id)) {
-          unitMembers.push(spouse);
-          seen.add(spouse.id);
+      (unitRelatedIds.get(member.id) || new Set()).forEach((relatedId) => {
+        const related = byId.get(relatedId);
+        if (related && generations.get(related.id) === generation && !seen.has(related.id)) {
+          unitMembers.push(related);
+          seen.add(related.id);
         }
       });
       units.push({ generation, members: unitMembers, width: unitMembers.length * CARD_WIDTH + (unitMembers.length - 1) * 14 });
@@ -138,7 +161,23 @@ export function buildFamilyGraph(data) {
   const width = Math.max(940, contentWidth + OUTER_PAD * 2);
   const maxRowWidth = Math.max(...rowWidths.values(), 0);
   const nodes = new Map();
+  const unitParentCenter = (unit) => {
+    const centers = [];
+    unit.members.forEach((member) => (parentIds.get(member.id) || []).forEach((parentId) => {
+      const parentNode = nodes.get(parentId);
+      if (parentNode) centers.push(parentNode.centerX);
+    }));
+    return centers.length ? centers.reduce((sum, center) => sum + center, 0) / centers.length : null;
+  };
   rows.forEach((row, generation) => {
+    row.sort((left, right) => {
+      const leftParentCenter = unitParentCenter(left);
+      const rightParentCenter = unitParentCenter(right);
+      if (leftParentCenter !== null && rightParentCenter !== null && leftParentCenter !== rightParentCenter) return leftParentCenter - rightParentCenter;
+      if (leftParentCenter !== null && rightParentCenter === null) return -1;
+      if (leftParentCenter === null && rightParentCenter !== null) return 1;
+      return compareMembers(unitAnchor(left), unitAnchor(right));
+    });
     let x = OUTER_PAD + (maxRowWidth - rowWidths.get(generation)) / 2;
     row.forEach((unit) => {
       unit.members.forEach((member, index) => {
