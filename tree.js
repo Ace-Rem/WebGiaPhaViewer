@@ -469,6 +469,7 @@ export class TreeRenderer {
       this.zoomAt(event.deltaY > 0 ? .9 : 1.1, x, y);
     }, { passive: false, signal });
     this.svg.addEventListener('pointerdown', (event) => {
+      this.suppressClick = false;
       this.cancelCameraAnimation();
       this.svg.setPointerCapture(event.pointerId);
       this.tapTarget = event.target.closest?.('[data-person-id]') || null;
@@ -508,6 +509,7 @@ export class TreeRenderer {
     }, { signal });
     const finishPointer = (event) => {
       const wasSinglePointer = this.pointerMap.size === 1;
+      const wasMultiPointer = this.pointerMap.size >= 2;
       const tapNode = this.tapTarget;
       const wasTap = wasSinglePointer && !this.didDrag && tapNode;
       if (wasTap) {
@@ -521,7 +523,14 @@ export class TreeRenderer {
       }
       if (this.didDrag) this.suppressClick = true;
       this.pointerMap.delete(event.pointerId);
-      if (this.pointerMap.size < 2) this.pinchStart = null;
+      if (wasMultiPointer && this.pointerMap.size === 1) {
+        const remaining = [...this.pointerMap.values()][0];
+        this.dragStart = { x: remaining.x, y: remaining.y, tx: this.tx, ty: this.ty };
+        this.pinchStart = null;
+        this.tapTarget = null;
+      } else if (this.pointerMap.size < 2) {
+        this.pinchStart = null;
+      }
       if (!this.pointerMap.size) { this.dragStart = null; this.tapTarget = null; this.viewport.classList.remove('is-dragging'); }
     };
     this.svg.addEventListener('pointerup', finishPointer, { signal });

@@ -46,14 +46,19 @@ const elements = {
   todayLabel: $('#todayLabel'),
   treeView: $('#treeView'),
   membersView: $('#membersView'),
+  treeCard: $('#treeCard'),
   treeViewport: $('#treeViewport'),
   treeSvg: $('#familyTree'),
   treeLoading: $('#treeLoading'),
   treeContext: $('#treeContext'),
   clearFocusButton: $('#clearFocusButton'),
+  zoomInButton: $('#zoomInButton'),
+  zoomOutButton: $('#zoomOutButton'),
+  homeButton: $('#homeButton'),
+  fullscreenButton: $('#fullscreenButton'),
   generationLegend: $('#generationLegend'),
   detailDrawer: $('#detailDrawer'),
-  drawerContent: $('#drawerContent'), drawerBackdrop: $('#drawerBackdrop'), drawerPanel: $('.drawer-panel'),
+  drawerContent: $('#drawerContent'), drawerTop: $('.drawer-top'), drawerBackdrop: $('#drawerBackdrop'), drawerPanel: $('.drawer-panel'),
   closeDrawer: $('#closeDrawer'),
   drawerBack: $('#drawerBack'),
   searchDialog: $('#searchDialog'),
@@ -93,14 +98,15 @@ const colorThemeKeys = Object.keys(colorThemeLabels);
 elements.desktopThemeOptions.innerHTML = elements.themeOptions.innerHTML;
 
 function applyTheme(theme) {
-  elements.root.dataset.theme = theme;
-  elements.root.style.colorScheme = theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'light dark';
+  const selectedTheme = theme === 'light' || theme === 'dark' ? theme : 'dark';
+  elements.root.dataset.theme = selectedTheme;
+  elements.root.style.colorScheme = selectedTheme === 'dark' ? 'dark' : 'light';
   const computedBackground = getComputedStyle(elements.root).getPropertyValue('--bg').trim();
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', computedBackground || (theme === 'dark' ? '#19221e' : '#f5f1e9'));
-  localStorage.setItem('family-tree-theme', theme);
-  const iconName = theme === 'dark' ? 'moon' : 'sun';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', computedBackground || (selectedTheme === 'dark' ? '#19221e' : '#f5f1e9'));
+  localStorage.setItem('family-tree-theme', selectedTheme);
+  const iconName = selectedTheme === 'dark' ? 'moon' : 'sun';
   $('#themeButton').innerHTML = icon(iconName);
-  const appearanceLabel = theme === 'system' ? 'hệ thống' : theme === 'dark' ? 'tối' : 'sáng';
+  const appearanceLabel = selectedTheme === 'dark' ? 'tối' : 'sáng';
   $('#themeButton').setAttribute('aria-label', 'Giao diện: ' + appearanceLabel);
   $('#mobileThemeButton').textContent = 'Đổi giao diện · ' + appearanceLabel;
 }
@@ -190,7 +196,10 @@ function selectPerson(id, options = {}) {
   updateTreeFocus();
   renderer?.centerOn(id, center);
   renderDetail(id);
-  if (openDrawer) openDrawerPanel();
+  if (openDrawer) {
+    const fullscreenExit = isTreeFullscreen() ? toggleTreeFullscreen() : Promise.resolve();
+    fullscreenExit.then(() => openDrawerPanel());
+  }
 }
 
 function openMemberProfile(id) {
@@ -305,6 +314,43 @@ function selectSearchResult(id) {
   requestAnimationFrame(() => selectPerson(id));
 }
 
+function isTreeFullscreen() {
+  const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+  return fullscreenElement === elements.treeViewport || elements.treeViewport.classList.contains("is-app-fullscreen");
+}
+
+function updateFullscreenButton() {
+  const active = isTreeFullscreen();
+  elements.fullscreenButton.setAttribute("aria-pressed", String(active));
+  elements.fullscreenButton.setAttribute("aria-label", active ? "Thoát toàn màn hình" : "Toàn màn hình");
+  elements.fullscreenButton.querySelector("use")?.setAttribute("href", active ? "#icon-fullscreen-exit" : "#icon-fullscreen");
+}
+
+function toggleFallbackFullscreen(active) {
+  elements.treeViewport.classList.toggle("is-app-fullscreen", active);
+  document.body.classList.toggle("tree-fullscreen-fallback", active);
+}
+
+async function toggleTreeFullscreen() {
+  if (!elements.treeViewport) return;
+  try {
+    if (isTreeFullscreen()) {
+      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+      else toggleFallbackFullscreen(false);
+    } else if (elements.treeViewport.requestFullscreen) {
+      await elements.treeViewport.requestFullscreen({ navigationUI: "hide" });
+    } else if (elements.treeViewport.webkitRequestFullscreen) {
+      elements.treeViewport.webkitRequestFullscreen();
+    } else {
+      toggleFallbackFullscreen(true);
+    }
+  } catch (error) {
+    if (!isTreeFullscreen()) toggleFallbackFullscreen(true);
+  }
+  updateFullscreenButton();
+}
+
 function renderSearchResults(query) {
   if (!query) { elements.searchResults.innerHTML = '<div class="search-empty">Bắt đầu nhập để tìm trong gia phả.</div>'; return; }
   const normalized = normalizeText(query);
@@ -410,26 +456,38 @@ elements.searchInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && searchMatches[searchCursor]) selectSearchResult(searchMatches[searchCursor].id)
 });
 elements.closeDrawer.addEventListener('click', closeDrawerPanel);
-elements.drawerBackdrop.addEventListener('click', closeDrawerPanel);
-elements.drawerPanel.addEventListener('touchstart', (event) => {
-  if (event.touches.length !== 1) { drawerTouchStart = null; return; }
-  const touch = event.touches[0];
-  drawerTouchStart = { x: touch.clientX, y: touch.clientY };
+elements.drawerBackdrop.addEventListener('click', (event) => {
+  const point = { x: event.clientX, y: event.clientY };
+  closeDrawerPanel();
+  requestAnimationFrame(() => {
+    const node = document.elementFromPoint(point.x, point.y)?.closest?.('[data-person-id]');
+    if (node) selectPerson(node.dataset.personId);
+  });
+});
+elements.drawerTop.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+  drawerTouchStart = { x: event.clientX, y: event.clientY };
+  elements.drawerTop.setPointerCapture?.(event.pointerId);
 }, { passive: true });
-elements.drawerPanel.addEventListener('touchend', (event) => {
-  if (!drawerTouchStart || event.changedTouches.length !== 1) { drawerTouchStart = null; return; }
-  const touch = event.changedTouches[0];
-  const deltaX = touch.clientX - drawerTouchStart.x;
-  const deltaY = touch.clientY - drawerTouchStart.y;
+const finishDrawerSwipe = (event) => {
+  if (!drawerTouchStart) return;
+  const deltaX = event.clientX - drawerTouchStart.x;
+  const deltaY = event.clientY - drawerTouchStart.y;
   drawerTouchStart = null;
-  if (deltaY > 90 && Math.abs(deltaY) > Math.abs(deltaX) * 1.15) closeDrawerPanel();
-}, { passive: true });
+  if (deltaY > 55 && deltaY > Math.abs(deltaX) * 1.1) closeDrawerPanel();
+};
+elements.drawerTop.addEventListener("pointerup", finishDrawerSwipe);
+elements.drawerTop.addEventListener("pointercancel", () => { drawerTouchStart = null; });
 elements.drawerBack.addEventListener('click', () => { const previousId = drawerHistory.pop(); if (previousId) selectPerson(previousId, { pushHistory: false, fromHistory: true }); });
 elements.clearFocusButton.addEventListener('click', () => { selectedId = null; lineageMode = 'all'; renderer?.updateFocus(null, null); renderer?.setActiveGeneration(null); elements.clearFocusButton.hidden = true; elements.treeContext.querySelector('span:last-child').textContent = 'Toàn bộ gia phả'; closeDrawerPanel(); });
 $('#fitButton').addEventListener('click', () => renderer?.fit());
-$('#zoomInButton').addEventListener('click', () => renderer?.zoomAt(1.18));
-$('#zoomOutButton').addEventListener('click', () => renderer?.zoomAt(.84));
-$('#homeButton').addEventListener('click', () => { const rootId = data?.family?.rootPersonId; if (rootId && graph.byId.has(rootId)) { selectPerson(rootId, { openDrawer: false, center: true }); } else renderer?.fit(); });
+elements.zoomInButton.addEventListener('click', () => renderer?.zoomAt(1.18));
+elements.zoomOutButton.addEventListener('click', () => renderer?.zoomAt(.84));
+elements.homeButton.addEventListener('click', () => { const rootId = data?.family?.rootPersonId; if (rootId && graph.byId.has(rootId)) { selectPerson(rootId, { openDrawer: false, center: true }); } else renderer?.fit(); });
+elements.fullscreenButton.addEventListener("click", toggleTreeFullscreen);
+document.addEventListener("fullscreenchange", updateFullscreenButton);
+document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
+updateFullscreenButton();
 elements.sortMembers.addEventListener('change', renderMembers);
 $$('[data-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 $('#mobileMenuButton').addEventListener('click', () => { elements.mobileMenu.hidden = !elements.mobileMenu.hidden; });
@@ -441,7 +499,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 applyColorTheme(localStorage.getItem('family-tree-color-theme') || 'blue');
-applyTheme(localStorage.getItem('family-tree-theme') || 'system');
+applyTheme(localStorage.getItem('family-tree-theme') || 'dark');
 elements.username.focus();
 
 void (async () => {

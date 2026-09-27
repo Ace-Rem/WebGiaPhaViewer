@@ -203,6 +203,13 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .tree-hint { position: absolute; z-index: 3; bottom: 23px; left: 22px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; opacity: .75; pointer-events: none; }
 .tree-hint .icon { width: 13px; height: 13px; }
 
+/* Fullscreen tree canvas */
+.tree-viewport:fullscreen, .tree-viewport:-webkit-full-screen, .tree-viewport.is-app-fullscreen { position: fixed; z-index: 100; inset: 0; width: 100vw; height: 100svh; max-width: none; border-radius: 0; }
+.tree-viewport:fullscreen #familyTree, .tree-viewport:-webkit-full-screen #familyTree, .tree-viewport.is-app-fullscreen #familyTree { inset: 0; width: 100%; height: 100%; }
+.tree-viewport:fullscreen .tree-loading, .tree-viewport:-webkit-full-screen .tree-loading, .tree-viewport.is-app-fullscreen .tree-loading { inset: 0; }
+.tree-viewport:fullscreen .generation-rail, .tree-viewport:-webkit-full-screen .generation-rail, .tree-viewport.is-app-fullscreen .generation-rail { top: 0; }
+body.tree-fullscreen-fallback { overflow: hidden; }
+
 /* SVG tree */
 .tree-node { cursor: pointer; outline: none; transition: opacity .3s; }
 .tree-node .node-card { fill: var(--surface-raised); stroke: var(--line); stroke-width: 1.2; filter: drop-shadow(0 5px 7px rgba(35, 45, 39, .07)); transition: fill .25s, stroke .25s, stroke-width .25s; }
@@ -252,7 +259,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .is-open .drawer-backdrop { opacity: 1; pointer-events: auto; }
 .drawer-panel { position: absolute; top: 12px; right: 12px; bottom: 12px; display: flex; flex-direction: column; width: min(430px, calc(100% - 24px)); overflow: hidden; border: 1px solid var(--line); border-radius: 21px; background: var(--surface); box-shadow: var(--shadow-lg); pointer-events: auto; touch-action: pan-y; transform: translateX(calc(100% + 20px)); transition: transform .42s var(--ease); }
 .is-open .drawer-panel { transform: translateX(0); }
-.drawer-top { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.drawer-top { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: 0 18px; border-bottom: 1px solid var(--line); touch-action: none; cursor: grab; }
 .drawer-top .icon-button { border-color: var(--line); }
 .drawer-kicker { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .15em; }
 .drawer-back { position: absolute; right: 18px; }
