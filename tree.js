@@ -1,10 +1,35 @@
 import { getMemberImagePath } from './member-image.js';
+import { getFamilySurname, getMemberSurname, isBiologicalMember, isInFamily, isInLawMember, resolveFamilyRoles } from './sibling-role.js';
+
+export { getFamilySurname, getMemberSurname, isBiologicalMember, isInFamily, isInLawMember, resolveFamilyRoles };
 
 const CARD_WIDTH = 204;
 const CARD_HEIGHT = 112;
 const UNIT_GAP = 58;
+const SIBLING_GAP = 18;
 const ROW_GAP = 132;
 const OUTER_PAD = 100;
+
+const FAMILY_PALETTE = ['#c88c62', '#79a494', '#8b9fbd', '#b08b9e', '#b1a36e', '#7fa8a4', '#bb7e73', '#9989b5', '#c19a72', '#6f9d8d', '#a88c82', '#8998aa'];
+const familyColorAssignments = new Map();
+const familyColorOwners = new Map();
+const stableHash = (value) => [...String(value)].reduce((hash, character) => ((hash << 5) - hash + character.charCodeAt(0)) | 0, 0) >>> 0;
+function getFamilyColor(familyId) {
+  if (familyColorAssignments.has(familyId)) return familyColorAssignments.get(familyId);
+  const start = stableHash(familyId) % FAMILY_PALETTE.length;
+  let color = FAMILY_PALETTE[start];
+  for (let offset = 0; offset < FAMILY_PALETTE.length; offset += 1) {
+    const candidate = FAMILY_PALETTE[(start + offset) % FAMILY_PALETTE.length];
+    const owner = familyColorOwners.get(candidate);
+    if (!owner || owner === familyId) {
+      color = candidate;
+      break;
+    }
+  }
+  familyColorAssignments.set(familyId, color);
+  familyColorOwners.set(color, familyId);
+  return color;
+}
 
 const escapeXml = (value = '') => String(value).replace(/[<>&'\"]/g, (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[character]));
 const initials = (name = '') => name.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase() || '?';
@@ -35,6 +60,7 @@ export function getSiblingOrder(member) {
 export function buildFamilyGraph(data) {
   const members = data.members.map((member) => ({ ...member, spouseIds: Array.isArray(member.spouseIds) ? [...new Set(member.spouseIds)] : [], siblingIds: Array.isArray(member.siblingIds) ? [...new Set(member.siblingIds)] : [] }));
   const byId = new Map(members.map((member) => [member.id, member]));
+  const familyRoleResolution = resolveFamilyRoles(members);
   const childrenByParent = new Map(members.map((member) => [member.id, []]));
   const parentIds = new Map();
   members.forEach((member) => {
@@ -55,14 +81,15 @@ export function buildFamilyGraph(data) {
       for (let next = index + 1; next < parents.length; next += 1) linkUnitMembers(parents[index], parents[next]);
     }
   });
-  const siblingsByMember = new Map(members.map((member) => [member.id, new Set(member.siblingIds)]));
+  const biologicalChildrenByParent = new Map([...childrenByParent].map(([parentId, childIds]) => [parentId, childIds.filter((childId) => isBiologicalMember(byId.get(childId), familyRoleResolution))]));
+  const siblingsByMember = new Map(members.map((member) => [member.id, new Set()]));
   const addSibling = (leftId, rightId) => {
-    if (!leftId || !rightId || leftId === rightId || !byId.has(leftId) || !byId.has(rightId)) return;
+    if (!leftId || !rightId || leftId === rightId || !byId.has(leftId) || !byId.has(rightId) || !isBiologicalMember(byId.get(leftId), familyRoleResolution) || !isBiologicalMember(byId.get(rightId), familyRoleResolution)) return;
     siblingsByMember.get(leftId).add(rightId);
     siblingsByMember.get(rightId).add(leftId);
   };
   members.forEach((member) => member.siblingIds.forEach((siblingId) => addSibling(member.id, siblingId)));
-  childrenByParent.forEach((children) => children.forEach((childId, index) => children.slice(index + 1).forEach((siblingId) => addSibling(childId, siblingId))));
+  biologicalChildrenByParent.forEach((children) => children.forEach((childId, index) => children.slice(index + 1).forEach((siblingId) => addSibling(childId, siblingId))));
   const siblingGroupByMember = new Map();
   let siblingGroupIndex = 0;
   members.forEach((member) => {
@@ -91,11 +118,34 @@ export function buildFamilyGraph(data) {
     if (leftOrder === null && rightOrder !== null) return 1;
     return 0;
   };
+  const familyMemberIds = getFamilyMemberIds({ members, byId, biologicalChildrenByParent, childrenByParent }, data.family);
+  const partnerPriority = (member) => familyMemberIds.has(member.id) ? 0 : 1;
+  const comparePartnerMembers = (left, right) => partnerPriority(left) - partnerPriority(right) || memberIndex.get(left.id) - memberIndex.get(right.id);
+  const compareLayoutPaths = (leftPath, rightPath) => {
+    const length = Math.max(leftPath.length, rightPath.length);
+    for (let index = 0; index < length; index += 1) {
+      const leftOrder = leftPath[index] ?? null;
+      const rightOrder = rightPath[index] ?? null;
+      const difference = compareAscendingOrder(leftOrder, rightOrder);
+      if (difference) return difference;
+    }
+    return 0;
+  };
+  const layoutPathCache = new Map();
+  const layoutPathFor = (member, resolving = new Set()) => {
+    if (layoutPathCache.has(member.id)) return layoutPathCache.get(member.id);
+    if (resolving.has(member.id)) return [];
+    const nextResolving = new Set(resolving).add(member.id);
+    const familyParents = (parentIds.get(member.id) || []).map((parentId) => byId.get(parentId)).filter((parent) => parent && familyMemberIds.has(parent.id));
+    const parentPaths = familyParents.map((parent) => layoutPathFor(parent, nextResolving));
+    const parentPath = parentPaths.length ? parentPaths.sort(compareLayoutPaths)[0] : [];
+    const path = [...parentPath, getSiblingOrder(member)];
+    layoutPathCache.set(member.id, path);
+    return path;
+  };
   const compareMembers = (left, right) => {
-    const parentOrderDifference = compareAscendingOrder(parentSiblingOrder(left), parentSiblingOrder(right));
-    if (parentOrderDifference) return parentOrderDifference;
-    const orderDifference = compareAscendingOrder(getSiblingOrder(left), getSiblingOrder(right));
-    if (orderDifference) return orderDifference;
+    const pathDifference = compareLayoutPaths(layoutPathFor(left), layoutPathFor(right));
+    if (pathDifference) return pathDifference;
     const groupDifference = siblingGroupByMember.get(left.id) - siblingGroupByMember.get(right.id);
     if (groupDifference) return groupDifference;
     return (memberIndex.get(left.id) - memberIndex.get(right.id)) || left.fullName.localeCompare(right.fullName, "vi");
@@ -142,66 +192,156 @@ export function buildFamilyGraph(data) {
           seen.add(related.id);
         }
       });
+      unitMembers.sort(comparePartnerMembers);
       units.push({ generation, members: unitMembers, width: unitMembers.length * CARD_WIDTH + (unitMembers.length - 1) * 14 });
     });
   });
   const unitAnchor = (unit) => [...unit.members].sort((left, right) => {
-    const leftSibling = (siblingsByMember.get(left.id)?.size || 0) > 0 || getSiblingOrder(left) !== null;
-    const rightSibling = (siblingsByMember.get(right.id)?.size || 0) > 0 || getSiblingOrder(right) !== null;
-    if (leftSibling !== rightSibling) return leftSibling ? -1 : 1;
-    return compareMembers(left, right);
+    const familyDifference = Number(!familyMemberIds.has(left.id)) - Number(!familyMemberIds.has(right.id));
+    if (familyDifference) return familyDifference;
+    const pathDifference = compareLayoutPaths(layoutPathFor(left), layoutPathFor(right));
+    if (pathDifference) return pathDifference;
+    return memberIndex.get(left.id) - memberIndex.get(right.id);
   })[0];
-  units.sort((left, right) => left.generation - right.generation || compareMembers(unitAnchor(left), unitAnchor(right)));
+  const compareFamilyUnits = (left, right) => compareMembers(unitAnchor(left), unitAnchor(right));
+  units.sort((left, right) => left.generation - right.generation || compareFamilyUnits(left, right));
 
   const maxGeneration = Math.max(...generations.values(), 0);
+  const unitByMember = new Map();
+  const unitKey = (unit) => unit.members.map((member) => member.id).sort().join('|');
+  units.forEach((unit) => unit.members.forEach((member) => unitByMember.set(member.id, unit)));
+  const childUnitsByUnit = new Map(units.map((unit) => [unit, new Set()]));
+  units.forEach((unit) => unit.members.forEach((member) => (childrenByParent.get(member.id) || []).forEach((childId) => {
+    const childUnit = unitByMember.get(childId);
+    if (childUnit && childUnit !== unit) childUnitsByUnit.get(unit).add(childUnit);
+  })));
+  const branchWidthFor = (unit, resolving = new Set()) => {
+    if (unit.branchWidth) return unit.branchWidth;
+    if (resolving.has(unit)) return unit.width;
+    const nextResolving = new Set(resolving).add(unit);
+    const childUnits = [...(childUnitsByUnit.get(unit) || [])];
+    const childrenWidth = childUnits.reduce((sum, childUnit) => sum + branchWidthFor(childUnit, nextResolving), 0) + Math.max(0, childUnits.length - 1) * UNIT_GAP;
+    unit.branchWidth = Math.max(unit.width, childrenWidth);
+    unit.layoutWidth = unit.width;
+    return unit.branchWidth;
+  };
+  units.forEach((unit) => branchWidthFor(unit));
+  const familyGroups = new Map();
+  members.forEach((child) => {
+    const parentUnits = [...new Map((parentIds.get(child.id) || []).map((parentId) => {
+      const unit = unitByMember.get(parentId);
+      return unit ? [unitKey(unit), unit] : null;
+    }).filter(Boolean))].map(([, unit]) => unit);
+    if (!parentUnits.length) return;
+    const parentUnitIds = parentUnits.map(unitKey).sort();
+    const parentGeneration = Math.min(...parentUnits.map((unit) => unit.generation));
+    const familyId = parentUnitIds.join('|');
+    const key = `${parentGeneration}:${familyId}`;
+    if (!familyGroups.has(key)) familyGroups.set(key, { key, familyId, parentGeneration, parentUnitIds, parentUnits, childIds: new Set() });
+    familyGroups.get(key).childIds.add(child.id);
+  });
+  const familyGroupsByGeneration = new Map();
+  familyGroups.forEach((group) => {
+    if (!familyGroupsByGeneration.has(group.parentGeneration)) familyGroupsByGeneration.set(group.parentGeneration, []);
+    familyGroupsByGeneration.get(group.parentGeneration).push(group);
+  });
+  const LANE_TOP = 14;
+  const LANE_GAP = 14;
+  const rowGapByGeneration = new Map();
+  for (let generation = 0; generation < maxGeneration; generation += 1) {
+    const laneCount = familyGroupsByGeneration.get(generation)?.length || 0;
+    const requiredGap = laneCount ? LANE_TOP + Math.max(0, laneCount - 1) * LANE_GAP + 20 : 0;
+    rowGapByGeneration.set(generation, Math.max(ROW_GAP, requiredGap));
+  }
+  const rowY = new Map();
+  let nextRowY = OUTER_PAD;
+  for (let generation = 0; generation <= maxGeneration; generation += 1) {
+    rowY.set(generation, nextRowY);
+    nextRowY += CARD_HEIGHT + (rowGapByGeneration.get(generation) || ROW_GAP);
+  }
   const rows = new Map();
   for (let generation = 0; generation <= maxGeneration; generation += 1) rows.set(generation, units.filter((unit) => unit.generation === generation));
-  const rowWidths = new Map([...rows].map(([generation, row]) => [generation, row.reduce((sum, unit) => sum + unit.width, 0) + Math.max(row.length - 1, 0) * UNIT_GAP]));
+  const unitSiblingGroup = (unit) => siblingGroupByMember.get(unitAnchor(unit).id);
+  const gapBetweenUnits = (left, right) => {
+    const leftGroup = unitSiblingGroup(left);
+    const rightGroup = unitSiblingGroup(right);
+    return leftGroup !== undefined && leftGroup === rightGroup ? SIBLING_GAP : UNIT_GAP;
+  };
+  const rowWidthFor = (row) => row.reduce((width, unit, index) => {
+    const nextUnit = row[index + 1];
+    return width + unit.layoutWidth + (nextUnit ? gapBetweenUnits(unit, nextUnit) : 0);
+  }, 0);
+  const rowWidths = new Map([...rows].map(([generation, row]) => [generation, rowWidthFor(row)]));
+  const maxRowWidth = Math.max(...rowWidths.values(), 0);
   const contentWidth = Math.max(...rowWidths.values(), 0);
   const width = Math.max(940, contentWidth + OUTER_PAD * 2);
-  const maxRowWidth = Math.max(...rowWidths.values(), 0);
   const nodes = new Map();
-  const unitParentCenter = (unit) => {
-    const centers = [];
-    unit.members.forEach((member) => (parentIds.get(member.id) || []).forEach((parentId) => {
-      const parentNode = nodes.get(parentId);
-      if (parentNode) centers.push(parentNode.centerX);
-    }));
-    return centers.length ? centers.reduce((sum, center) => sum + center, 0) / centers.length : null;
-  };
   rows.forEach((row, generation) => {
-    row.sort((left, right) => {
-      const leftParentCenter = unitParentCenter(left);
-      const rightParentCenter = unitParentCenter(right);
-      if (leftParentCenter !== null && rightParentCenter !== null && leftParentCenter !== rightParentCenter) return leftParentCenter - rightParentCenter;
-      if (leftParentCenter !== null && rightParentCenter === null) return -1;
-      if (leftParentCenter === null && rightParentCenter !== null) return 1;
-      return compareMembers(unitAnchor(left), unitAnchor(right));
-    });
+    row.sort(compareFamilyUnits);
     let x = OUTER_PAD + (maxRowWidth - rowWidths.get(generation)) / 2;
-    row.forEach((unit) => {
+    row.forEach((unit, index) => {
+      const unitOffset = (unit.layoutWidth - unit.width) / 2;
       unit.members.forEach((member, index) => {
-        nodes.set(member.id, { member, id: member.id, generation, x: x + index * (CARD_WIDTH + 14), y: OUTER_PAD + generation * (CARD_HEIGHT + ROW_GAP), width: CARD_WIDTH, height: CARD_HEIGHT, centerX: x + index * (CARD_WIDTH + 14) + CARD_WIDTH / 2, centerY: OUTER_PAD + generation * (CARD_HEIGHT + ROW_GAP) + CARD_HEIGHT / 2 });
+        const y = rowY.get(generation);
+        const memberX = x + unitOffset + index * (CARD_WIDTH + 14);
+        nodes.set(member.id, { member, id: member.id, generation, x: memberX, y, width: CARD_WIDTH, height: CARD_HEIGHT, centerX: memberX + CARD_WIDTH / 2, centerY: y + CARD_HEIGHT / 2 });
       });
-      x += unit.width + UNIT_GAP;
+      const nextUnit = row[index + 1];
+      x += unit.layoutWidth + (nextUnit ? gapBetweenUnits(unit, nextUnit) : 0);
     });
   });
-
-  const height = OUTER_PAD * 2 + (maxGeneration + 1) * CARD_HEIGHT + maxGeneration * (ROW_GAP - 24);
+  const familyGroupLane = new Map();
+  const groupBusRange = (group) => {
+    const parentCenters = group.parentUnits.flatMap((unit) => unit.members.map((member) => nodes.get(member.id)?.centerX).filter((center) => center !== undefined));
+    const childCenters = [...group.childIds].map((childId) => nodes.get(childId)?.centerX).filter((center) => center !== undefined);
+    if (!parentCenters.length || !childCenters.length) return [0, 0];
+    const parentStemX = (Math.min(...parentCenters) + Math.max(...parentCenters)) / 2;
+    const centers = [parentStemX, ...childCenters];
+    return [Math.min(...centers), Math.max(...centers)];
+  };
+  familyGroupsByGeneration.forEach((groups) => {
+    const laneEnds = [];
+    groups.sort((left, right) => groupBusRange(left)[0] - groupBusRange(right)[0] || left.key.localeCompare(right.key));
+    groups.forEach((group) => {
+      const [left, right] = groupBusRange(group);
+      let lane = 0;
+      while (laneEnds[lane] !== undefined && laneEnds[lane] + 12 >= left) lane += 1;
+      familyGroupLane.set(group.key, lane);
+      laneEnds[lane] = right;
+    });
+  });
+  const familyColorById = new Map();
+  familyGroups.forEach((group) => {
+    group.familyColor = getFamilyColor(group.familyId);
+    familyColorById.set(group.familyId, group.familyColor);
+  });
+  const height = (rowY.get(maxGeneration) || OUTER_PAD) + CARD_HEIGHT + OUTER_PAD;
   const edges = [];
-  members.forEach((child) => {
-    const childNode = nodes.get(child.id);
-    const parents = parentIds.get(child.id).map((id) => nodes.get(id)).filter(Boolean);
-    if (!childNode || !parents.length) return;
-    if (parents.length === 1) {
-      edges.push({ type: 'parent', id: `parent-${parents[0].id}-${child.id}`, from: parents[0].id, to: child.id, path: `M ${parents[0].centerX} ${parents[0].y + CARD_HEIGHT} V ${(parents[0].y + CARD_HEIGHT + childNode.y) / 2} H ${childNode.centerX} V ${childNode.y}` });
-    } else {
-      const left = parents.sort((a, b) => a.centerX - b.centerX)[0];
-      const right = parents[parents.length - 1];
-      const junction = (left.centerX + right.centerX) / 2;
-      const midY = (left.y + CARD_HEIGHT + childNode.y) / 2;
-      edges.push({ type: 'parent', id: `parents-${child.id}`, from: parents.map((parent) => parent.id).join(','), to: child.id, path: `M ${left.centerX} ${left.y + CARD_HEIGHT} V ${midY} H ${right.centerX} M ${junction} ${midY} V ${childNode.y} H ${childNode.centerX} V ${childNode.y}` });
-    }
+  const familyLaneY = (group) => rowY.get(group.parentGeneration) + CARD_HEIGHT + LANE_TOP + (familyGroupLane.get(group.key) || 0) * LANE_GAP;
+  familyGroups.forEach((group) => {
+    const parentNodes = group.parentUnits.flatMap((unit) => unit.members.map((member) => nodes.get(member.id)).filter(Boolean));
+    const childNodes = [...group.childIds].map((childId) => nodes.get(childId)).filter(Boolean);
+    if (!parentNodes.length || !childNodes.length) return;
+    const parentLeft = Math.min(...parentNodes.map((node) => node.centerX));
+    const parentRight = Math.max(...parentNodes.map((node) => node.centerX));
+    const parentStemX = (parentLeft + parentRight) / 2;
+    const childLeft = Math.min(...childNodes.map((node) => node.centerX));
+    const childRight = Math.max(...childNodes.map((node) => node.centerX));
+    const busY = familyLaneY(group);
+    const busLeft = Math.min(parentStemX, childLeft);
+    const busRight = Math.max(parentStemX, childRight);
+    const parentBottom = Math.max(...parentNodes.map((node) => node.y + CARD_HEIGHT));
+    const parentLinkY = parentBottom + 12;
+    const parentIdsForEdge = parentNodes.map((node) => node.id).join(',');
+    const childIdsForEdge = childNodes.map((node) => node.id).join(',');
+    const trunk = parentNodes.length > 1
+      ? `M ${parentLeft} ${parentBottom} V ${parentLinkY} H ${parentRight} M ${parentStemX} ${parentLinkY} V ${busY}`
+      : `M ${parentStemX} ${parentBottom} V ${busY}`;
+    edges.push({ type: 'parent', id: `family-bus-${group.key}`, familyId: group.familyId, familyColor: group.familyColor, from: parentIdsForEdge, to: childIdsForEdge, path: `${trunk} M ${busLeft} ${busY} H ${busRight}` });
+    childNodes.forEach((childNode) => {
+      const childParents = parentIds.get(childNode.id) || [];
+      edges.push({ type: 'parent', id: `parent-${group.key}-${childNode.id}`, familyId: group.familyId, familyColor: group.familyColor, from: childParents.join(','), to: childNode.id, path: `M ${childNode.centerX} ${busY} V ${childNode.y}` });
+    });
   });
   members.forEach((member) => {
     member.spouseIds.forEach((spouseId) => {
@@ -215,18 +355,32 @@ export function buildFamilyGraph(data) {
       edges.push({ type: 'sibling', id: `sibling-${left.id}-${right.id}`, from: left.id, to: right.id, path: `M ${left.x + CARD_WIDTH / 2} ${left.y - 8} V ${left.y - 20} H ${right.x + CARD_WIDTH / 2} V ${right.y - 8}` });
     }
   }));
+  return { members, byId, parentIds, familyRoles: familyRoleResolution.byId, ambiguousFamilyRoleIds: familyRoleResolution.ambiguousIds, childrenByParent, biologicalChildrenByParent, siblingsByMember, siblingGroupByMember, familyColorById, generations, nodes, edges, width, height, maxGeneration, rowY, rowGapByGeneration };
+}
 
-  return { members, byId, parentIds, childrenByParent, siblingsByMember, siblingGroupByMember, generations, nodes, edges, width, height, maxGeneration };
+function collectDescendantIds(childrenByParent, rootIds = []) {
+  const descendants = new Set();
+  const queue = [...rootIds];
+  while (queue.length) {
+    const parentId = queue.shift();
+    (childrenByParent.get(parentId) || []).forEach((childId) => {
+      if (descendants.has(childId)) return;
+      descendants.add(childId);
+      queue.push(childId);
+    });
+  }
+  return descendants;
 }
 
 export function relationSets(graph, personId) {
   const ancestors = new Set();
-  const descendants = new Set();
   const visitParents = (id) => (graph.parentIds.get(id) || []).forEach((parentId) => { if (!ancestors.has(parentId)) { ancestors.add(parentId); visitParents(parentId); } });
-  const visitChildren = (id) => (graph.childrenByParent.get(id) || []).forEach((childId) => { if (!descendants.has(childId)) { descendants.add(childId); visitChildren(childId); } });
   visitParents(personId);
-  visitChildren(personId);
-  return { ancestors, descendants };
+  return { ancestors, descendants: collectDescendantIds(graph.childrenByParent, [personId]) };
+}
+
+export function getFamilyMemberIds(graph, family = {}) {
+  return new Set((graph.members || []).filter((member) => isInFamily(member, family)).map((member) => member.id));
 }
 
 export class TreeRenderer {
@@ -239,6 +393,7 @@ export class TreeRenderer {
     this.graph = null;
     this.selectedId = null;
     this.focusIds = null;
+    this.filterIds = null;
     this.mode = 'all';
     this.scale = 1;
     this.tx = 0;
@@ -260,13 +415,20 @@ export class TreeRenderer {
     this.bindPointerEvents();
   }
 
-  render(graph, selectedId = null, focusIds = null) {
+  render(graph, selectedId = null, focusIds = null, filterIds = null) {
     this.graph = graph;
     this.selectedId = selectedId;
     this.focusIds = focusIds;
+    this.filterIds = filterIds;
     this.svg.setAttribute('viewBox', `0 0 ${this.viewWidth} ${this.viewHeight}`);
-    const edgeMarkup = graph.edges.map((edge) => `<path class="tree-edge ${edge.type}" data-edge-from="${escapeXml(edge.from)}" data-edge-to="${escapeXml(edge.to)}" d="${edge.path}" />`).join('');
-    const bandMarkup = Array.from({ length: graph.maxGeneration + 1 }, (_, generation) => `<rect class="generation-band" data-generation="${generation}" x="${OUTER_PAD - 28}" y="${OUTER_PAD + generation * (CARD_HEIGHT + ROW_GAP) - 20}" width="${Math.max(0, graph.width - OUTER_PAD * 2 + 56)}" height="${CARD_HEIGHT + 40}" rx="24" />`).join('');
+    const edgeMarkup = graph.edges.map((edge) => {
+      const familyStyle = edge.familyColor ? ` style="--family-color:${escapeXml(edge.familyColor)}"` : '';
+      return `<path class="tree-edge ${edge.type}" data-edge-from="${escapeXml(edge.from)}" data-edge-to="${escapeXml(edge.to)}"${familyStyle} d="${edge.path}" />`;
+    }).join('');
+    const bandMarkup = Array.from({ length: graph.maxGeneration + 1 }, (_, generation) => {
+      const y = graph.rowY?.get(generation) ?? (OUTER_PAD + generation * (CARD_HEIGHT + ROW_GAP));
+      return `<rect class="generation-band" data-generation="${generation}" x="${OUTER_PAD - 28}" y="${y - 20}" width="${Math.max(0, graph.width - OUTER_PAD * 2 + 56)}" height="${CARD_HEIGHT + 40}" rx="24" />`;
+    }).join('');
     const nodeMarkup = [...graph.nodes.values()].map((node) => this.nodeMarkup(node)).join('');
     this.svg.innerHTML = `<g class="tree-world"><g class="tree-bands">${bandMarkup}</g><g class="tree-edges">${edgeMarkup}</g><g class="tree-nodes">${nodeMarkup}</g></g>`;
     this.wirePhotoFallbacks();
@@ -276,9 +438,13 @@ export class TreeRenderer {
   nodeMarkup(node) {
     const { member } = node;
     const classes = ['tree-node'];
-    if (member.id === this.selectedId) classes.push('selected');
-    if (this.focusIds && !this.focusIds.has(member.id)) classes.push('dimmed');
-    else if (this.focusIds && member.id !== this.selectedId) classes.push('related');
+    const isSelected = member.id === this.selectedId;
+    const matchesLineage = !this.focusIds || this.focusIds.has(member.id);
+    const matchesFilter = !this.filterIds || this.filterIds.has(member.id);
+    if (isSelected) classes.push('selected');
+    if (this.filterIds && matchesFilter) classes.push('filter-match');
+    if (!isSelected && (!matchesLineage || !matchesFilter)) classes.push('dimmed');
+    else if (!isSelected && ((this.focusIds && matchesLineage) || (this.filterIds && matchesFilter))) classes.push('related');
     const nameLines = splitName(member.fullName);
     const nameMarkup = nameLines.map((line, index) => `<text class="node-name" x="64" y="${30 + index * 15}">${escapeXml(line)}</text>`).join('');
     const siblingOrder = getSiblingOrder(member);
@@ -303,19 +469,35 @@ export class TreeRenderer {
   updateFocus(selectedId, focusIds) {
     this.selectedId = selectedId;
     this.focusIds = focusIds;
+    this.applyVisualState();
+  }
+
+  setFilter(filterIds) {
+    this.filterIds = filterIds instanceof Set ? filterIds : null;
+    this.applyVisualState();
+  }
+
+  applyVisualState() {
+    const { selectedId, focusIds, filterIds } = this;
     this.svg.querySelectorAll('.tree-node').forEach((node) => {
       const isSelected = node.dataset.personId === selectedId;
-      const isFocused = !focusIds || focusIds.has(node.dataset.personId);
+      const matchesLineage = !focusIds || focusIds.has(node.dataset.personId);
+      const matchesFilter = !filterIds || filterIds.has(node.dataset.personId);
+      const isVisible = isSelected || (matchesLineage && matchesFilter);
       node.classList.toggle('selected', isSelected);
-      node.classList.toggle('dimmed', !isFocused);
-      node.classList.toggle('related', Boolean(focusIds && isFocused && !isSelected));
+      node.classList.toggle('filter-match', Boolean(filterIds && matchesFilter));
+      node.classList.toggle('dimmed', !isVisible);
+      node.classList.toggle('related', Boolean(!isSelected && ((focusIds && matchesLineage) || (filterIds && matchesFilter))));
     });
     this.svg.querySelectorAll('.tree-edge').forEach((edge) => {
-      if (!focusIds) { edge.classList.remove('dimmed', 'related'); return; }
       const edgePeople = `${edge.dataset.edgeFrom},${edge.dataset.edgeTo}`.split(',');
-      const related = edgePeople.some((id) => focusIds.has(id)) || edgePeople.some((id) => id === selectedId);
-      edge.classList.toggle('dimmed', !related);
+      const relatedByLineage = Boolean(focusIds && edgePeople.some((id) => focusIds.has(id)));
+      const relatedByFilter = Boolean(filterIds && edgePeople.some((id) => filterIds.has(id)));
+      const related = Boolean(edgePeople.some((id) => id === selectedId) || relatedByLineage || relatedByFilter);
+      const filtering = Boolean(focusIds || filterIds);
+      edge.classList.toggle('dimmed', filtering && !related);
       edge.classList.toggle('related', related);
+      edge.classList.toggle('filter-related', Boolean(filterIds && relatedByFilter));
     });
   }
 
@@ -371,11 +553,10 @@ export class TreeRenderer {
   }
 
   getGenerationRailMetrics() {
-    const positions = Array.from({ length: (this.graph?.maxGeneration || 0) + 1 }, (_, generation) => ({
-      generation,
-      top: this.ty + (OUTER_PAD + generation * (CARD_HEIGHT + ROW_GAP) - 20) * this.scale,
-      height: (CARD_HEIGHT + 40) * this.scale,
-    }));
+    const positions = Array.from({ length: (this.graph?.maxGeneration || 0) + 1 }, (_, generation) => {
+      const y = this.graph?.rowY?.get(generation) ?? (OUTER_PAD + generation * (CARD_HEIGHT + ROW_GAP));
+      return { generation, top: this.ty + (y - 20) * this.scale, height: (CARD_HEIGHT + 40) * this.scale };
+    });
     const generationCount = (this.graph?.maxGeneration || 0) + 1;
     return { positions, trackHeight: Math.max(this.viewHeight, this.graph ? this.graph.height * this.scale + 120 : this.viewHeight, generationCount * 68 + 20) };
   }

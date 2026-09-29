@@ -1,6 +1,6 @@
 import { restoreRememberedSession, signIn, signOut } from './auth.js';
 import { getMemberImagePath } from './member-image.js';
-import { buildFamilyGraph, getSiblingOrder, lifeDates, initials, normalizeText, relationSets, TreeRenderer } from './tree.js';
+import { buildFamilyGraph, getFamilyMemberIds, getSiblingOrder, lifeDates, initials, normalizeText, relationSets, TreeRenderer } from './tree.js';
 
 const $ = (selector, parent = document) => parent.querySelector(selector);
 const $$ = (selector, parent = document) => [...parent.querySelectorAll(selector)];
@@ -50,6 +50,7 @@ const elements = {
   treeViewport: $('#treeViewport'),
   treeSvg: $('#familyTree'),
   treeLoading: $('#treeLoading'),
+  treeFilterButtons: $$('[data-tree-filter]'),
   treeContext: $('#treeContext'),
   clearFocusButton: $('#clearFocusButton'),
   zoomInButton: $('#zoomInButton'),
@@ -81,6 +82,8 @@ let renderer = null;
 let selectedId = null;
 let profilePersonId = null;
 let lineageMode = 'all';
+let activeTreeFilter = 'all';
+let familyMemberIds = new Set();
 let drawerHistory = [];
 let drawerTouchStart = null;
 let suppressBackdropClick = false;
@@ -174,6 +177,30 @@ function getFocusIds() {
   if (lineageMode === 'ancestors' || lineageMode === 'lineage') ancestors.forEach((id) => focus.add(id));
   if (lineageMode === 'descendants' || lineageMode === 'lineage') descendants.forEach((id) => focus.add(id));
   return focus;
+}
+
+function getTreeFilterIds() {
+  if (activeTreeFilter === 'all') return null;
+  if (activeTreeFilter === 'inFamily') return familyMemberIds;
+  if (activeTreeFilter === 'maleInFamily') return new Set([...familyMemberIds].filter((id) => graph.byId.get(id)?.gender === 'male'));
+  if (activeTreeFilter === 'femaleInFamily') return new Set([...familyMemberIds].filter((id) => graph.byId.get(id)?.gender === 'female'));
+  if (activeTreeFilter === 'living') return new Set(graph.members.filter((member) => !String(member.deathDate || '').trim()).map((member) => member.id));
+  return null;
+}
+
+function updateTreeFilter() {
+  elements.treeFilterButtons.forEach((button) => {
+    const active = button.dataset.treeFilter === activeTreeFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  renderer?.setFilter(getTreeFilterIds());
+}
+
+function setTreeFilter(filter) {
+  if (!['all', 'inFamily', 'maleInFamily', 'femaleInFamily', 'living'].includes(filter)) return;
+  activeTreeFilter = filter;
+  updateTreeFilter();
 }
 
 function updateTreeFocus() {
@@ -409,11 +436,12 @@ function populateApp() {
   elements.brandMonogram.textContent = familyMonogram(familyName);
   elements.memberCount.textContent = graph.members.length;
   elements.generationCount.textContent = graph.maxGeneration + 1;
-  const roots = graph.members.filter((member) => (graph.parentIds.get(member.id) || []).length === 0);
-  elements.branchCount.textContent = Math.max(1, roots.length);
+  familyMemberIds = getFamilyMemberIds(graph, data.family);
+  elements.branchCount.textContent = familyMemberIds.size;
   elements.todayLabel.textContent = 'Mở trong trình duyệt';
   renderer = new TreeRenderer(elements.treeSvg, elements.treeViewport, (id) => selectPerson(id), openMemberProfile, updateGenerationRail);
   renderer.render(graph);
+  updateTreeFilter();
   renderGenerationRail();
   requestAnimationFrame(() => { renderer.fit(false); elements.treeLoading.classList.add('is-done'); });
 }
@@ -429,6 +457,8 @@ async function resetToLogin() {
   await signOut();
   renderer?.destroy();
   data = null; graph = null; renderer = null; selectedId = null; profilePersonId = null; drawerHistory = [];
+  activeTreeFilter = 'all';
+  familyMemberIds = new Set();
   closeDrawerPanel();
   elements.mainApp.hidden = true;
   elements.loginScreen.hidden = false;
@@ -542,6 +572,7 @@ document.addEventListener("fullscreenchange", updateFullscreenButton);
 document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
 updateFullscreenButton();
 elements.sortMembers.addEventListener('change', renderMembers);
+elements.treeFilterButtons.forEach((button) => button.addEventListener('click', () => setTreeFilter(button.dataset.treeFilter)));
 $$('[data-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 $('#mobileMenuButton').addEventListener('click', () => { elements.mobileMenu.hidden = !elements.mobileMenu.hidden; });
 document.addEventListener('click', (event) => { if (!elements.mobileMenu.hidden && !event.target.closest('#mobileMenu, #mobileMenuButton')) { toggleColorThemeMenu(false); closeMobileMenu(); }
