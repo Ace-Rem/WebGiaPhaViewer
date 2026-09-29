@@ -121,6 +121,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .button-primary:hover { background: var(--accent-bright); box-shadow: 0 9px 24px color-mix(in srgb, var(--accent) 30%, transparent); }
 .button-quiet { color: var(--muted-strong); border-color: var(--line); background: transparent; }
 .button-quiet:hover { color: var(--text-strong); background: var(--surface-muted); }
+.download-data-button { min-height: 38px; padding: 0 13px; gap: 7px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--accent-soft); font-size: 10px; white-space: nowrap; }
+.download-data-button .icon { width: 15px; height: 15px; }
+.download-data-button:hover { color: var(--accent-bright); border-color: color-mix(in srgb, var(--accent) 65%, var(--line)); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 13%, transparent); }
 .login-button { width: 100%; min-height: 53px; margin-top: 6px; border-radius: 12px; }
 .button-arrow { transform: rotate(180deg); margin-left: auto; width: 16px; }
 .button-loading { display: none; align-items: center; gap: 9px; }
@@ -329,6 +332,8 @@ body.is-drawer-open { overflow: hidden; }
   .desktop-nav { margin-left: 18px; gap: 17px; }
   .search-trigger { width: 39px; padding: 0; justify-content: center; }
   .search-hint { display: none; }
+  .download-data-button { width: 38px; min-height: 38px; padding: 0; }
+  .download-data-button span { display: none; }
   .page-wrap { width: min(100% - 44px, 1380px); }
 }
 
