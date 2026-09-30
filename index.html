@@ -95,7 +95,15 @@
           <div class="topbar-actions">
             <button class="icon-button search-trigger" id="searchTrigger" aria-label="Tìm kiếm thành viên"><svg class="icon"><use href="#icon-search"></use></svg><span class="search-hint">Tìm kiếm <kbd>⌘ K</kbd></span></button>
             <button class="icon-button theme-button" id="themeButton" aria-label="Đổi giao diện"><svg class="icon"><use href="#icon-sun"></use></svg></button>
-            <a class="button button-quiet download-data-button" id="downloadDataButton" href="./data.enc" download="data.enc" aria-label="Tải dữ liệu gia phả" title="Tải xuống file data.enc"><svg class="icon"><use href="#icon-download"></use></svg><span>Tải dữ liệu gia phả</span></a>
+            <div class="download-actions" id="downloadActions">
+              <a class="button button-quiet download-data-button" id="downloadDataButton" href="./data.enc" download="data.enc" aria-label="Tải dữ liệu gia phả" title="Tải xuống file data.enc"><svg class="icon"><use href="#icon-download"></use></svg><span>Tải dữ liệu</span></a>
+              <a class="button button-quiet download-app-button" id="downloadAppButton" href="https://github.com/Ace-Rem/AppGiaPhaViewer/releases" target="_blank" rel="noopener noreferrer" aria-label="Tải ứng dụng gia phả" title="Mở trang tải ứng dụng gia phả"><svg class="icon"><use href="#icon-download"></use></svg><span>Tải app</span></a>
+              <button class="button button-quiet download-menu-trigger" id="downloadMenuButton" type="button" aria-expanded="false" aria-controls="downloadMenu"><svg class="icon"><use href="#icon-download"></use></svg><span>Tải xuống</span><span class="download-menu-chevron" aria-hidden="true">⌄</span></button>
+              <div class="download-menu" id="downloadMenu" role="menu" hidden>
+                <a class="download-menu-item" href="./data.enc" download="data.enc" role="menuitem"><svg class="icon"><use href="#icon-download"></use></svg><span>Tải dữ liệu</span></a>
+                <a class="download-menu-item" href="https://github.com/Ace-Rem/AppGiaPhaViewer/releases" target="_blank" rel="noopener noreferrer" role="menuitem"><svg class="icon"><use href="#icon-download"></use></svg><span>Tải app</span></a>
+              </div>
+            </div>
             <button class="button button-quiet logout-button" id="logoutButton"><svg class="icon"><use href="#icon-logout"></use></svg><span>Đăng xuất</span></button>
             <button class="icon-button mobile-menu-button" id="mobileMenuButton" aria-label="Mở menu"><svg class="icon"><use href="#icon-menu"></use></svg></button>
           </div>

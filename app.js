@@ -69,6 +69,8 @@ const elements = {
   membersGrid: $('#membersGrid'),
   sortMembers: $('#sortMembers'),
   toast: $('#toast'),
+  downloadMenuButton: $('#downloadMenuButton'),
+  downloadMenu: $('#downloadMenu'),
   mobileMenu: $('#mobileMenu'),
   themeMenuButton: $('#themeMenuButton'),
   themeOptions: $('#themeOptions'),
@@ -129,6 +131,12 @@ function toggleColorThemeMenu(force, options = elements.themeOptions, trigger = 
   const open = typeof force === 'boolean' ? force : options.hidden;
   options.hidden = !open;
   trigger.setAttribute('aria-expanded', String(open));
+}
+
+function toggleDownloadMenu(force) {
+  const open = typeof force === 'boolean' ? force : elements.downloadMenu.hidden;
+  elements.downloadMenu.hidden = !open;
+  elements.downloadMenuButton.setAttribute('aria-expanded', String(open));
 }
 
 function cycleTheme() {
@@ -575,11 +583,15 @@ elements.sortMembers.addEventListener('change', renderMembers);
 elements.treeFilterButtons.forEach((button) => button.addEventListener('click', () => setTreeFilter(button.dataset.treeFilter)));
 $$('[data-view]').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 $('#mobileMenuButton').addEventListener('click', () => { elements.mobileMenu.hidden = !elements.mobileMenu.hidden; });
+elements.downloadMenuButton.addEventListener('click', (event) => { event.stopPropagation(); toggleDownloadMenu(); });
+elements.downloadMenu.addEventListener('click', () => toggleDownloadMenu(false));
 document.addEventListener('click', (event) => { if (!elements.mobileMenu.hidden && !event.target.closest('#mobileMenu, #mobileMenuButton')) { toggleColorThemeMenu(false); closeMobileMenu(); }
-  if (!event.target.closest('.desktop-theme-menu')) toggleColorThemeMenu(false, elements.desktopThemeOptions, elements.desktopThemeMenuButton); });
+  if (!event.target.closest('.desktop-theme-menu')) toggleColorThemeMenu(false, elements.desktopThemeOptions, elements.desktopThemeMenuButton);
+  if (!event.target.closest('#downloadActions')) toggleDownloadMenu(false);
+});
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !elements.mainApp.hidden) { event.preventDefault(); openSearch(); }
-  if (event.key === 'Escape') { toggleColorThemeMenu(false); toggleColorThemeMenu(false, elements.desktopThemeOptions, elements.desktopThemeMenuButton); closeMobileMenu(); if (elements.detailDrawer.classList.contains('is-open')) closeDrawerPanel(); }
+  if (event.key === 'Escape') { toggleColorThemeMenu(false); toggleColorThemeMenu(false, elements.desktopThemeOptions, elements.desktopThemeMenuButton); toggleDownloadMenu(false); closeMobileMenu(); if (elements.detailDrawer.classList.contains('is-open')) closeDrawerPanel(); }
 });
 
 applyColorTheme(localStorage.getItem('family-tree-color-theme') || 'blue');
