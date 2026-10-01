@@ -138,3 +138,22 @@ Lưu ý: `assets/members/` là static public asset của GitHub Pages. Ảnh tro
 
 
 `generation` là thế hệ cơ sở 1-based tùy chọn; nếu bỏ trống, graph suy ra từ cha/mẹ. Trong Editor, checkbox **Đẩy thế hệ sau** sẽ tăng 1 cho các member từ chính thế hệ đang nhập trở đi và được lưu trong Undo/Redo. `generationOffset` chỉ là offset hiển thị toàn cục.
+
+## Cloudflare Worker / R2
+
+Viewer ưu tiên dữ liệu mã hóa từ Worker rồi mới dùng file Git local. Cấu hình Worker URL, không có secret, tại `remote-config.js`:
+
+```js
+apiBaseUrl: 'https://family-tree-api.acerem.workers.dev',
+enabled: true
+```
+
+Luồng tải là `GET /version` → `GET /data?version=...` → kiểm tra envelope → decrypt PBKDF2/AES-GCM → validate schema. Timeout request là 8 giây. HTTP lỗi, CORS, timeout, dữ liệu rỗng/hỏng, decrypt lỗi hoặc schema lỗi đều chuyển tự động sang `./data.enc`. File `data.enc` trong repository này là fallback bắt buộc và không được xóa.
+
+Ảnh online dùng cùng filename hiện tại qua `GET /images/<filename>?version=<contentHash>`. Nếu ảnh không tồn tại, avatar initials hiện như trước.
+
+## Offline fallback
+
+Để kiểm tra fallback, tắt network hoặc tạm đổi `apiBaseUrl` thành endpoint không tồn tại rồi mở lại Viewer. Sau khi nhập mật khẩu, UI vẫn mở bằng `data.enc` trong Git và chỉ hiển thị trạng thái nhỏ **Dữ liệu dự phòng trong Git**. Nếu cả online và local đều không mở được, màn hình đăng nhập báo lỗi rõ ràng; app không crash trắng.
+
+Worker/R2 được triển khai từ thư mục `../family-tree-api`; xem README của API để tạo bucket, bind R2, cấu hình CORS và secret publish.

@@ -1,5 +1,5 @@
-import { restoreRememberedSession, signIn, signOut } from './auth.js';
-import { getMemberImagePath } from './member-image.js';
+import { getDataSourceStatus, restoreRememberedSession, signIn, signOut } from './auth.js';
+import { getMemberImagePath, setMemberImageSource } from './member-image.js';
 import { buildFamilyGraph, getFamilyMemberIds, getSiblingOrder, lifeDates, initials, normalizeText, relationSets, TreeRenderer } from './tree.js';
 
 const $ = (selector, parent = document) => parent.querySelector(selector);
@@ -455,9 +455,12 @@ function populateApp() {
 }
 
 function showMainApp() {
+  const sourceStatus = getDataSourceStatus();
+  setMemberImageSource(sourceStatus?.source, sourceStatus?.version?.versionId || sourceStatus?.version?.contentHash || sourceStatus?.version?.dataVersion);
   elements.loginScreen.hidden = true;
   elements.mainApp.hidden = false;
   populateApp();
+  elements.todayLabel.textContent = sourceStatus?.source === 'online' ? 'Dữ liệu online' : 'Dữ liệu dự phòng trong Git';
   window.scrollTo(0, 0);
 }
 
@@ -490,7 +493,13 @@ async function handleLogin(event) {
     showMainApp();
   } catch (error) {
     console.error('Family data could not be opened:', error);
-    elements.loginError.textContent = error.message === 'data-unavailable' ? 'Không thể mở dữ liệu gia phả lúc này.' : error.message === 'data-invalid' ? 'Dữ liệu gia phả có định dạng chưa hợp lệ.' : 'Thông tin đăng nhập chưa đúng hoặc dữ liệu không thể giải mã.';
+    elements.loginError.textContent = error.code === 'local-fetch' || error.message === 'data-unavailable'
+      ? 'Không thể tải dữ liệu online hoặc data.enc dự phòng trong Git.'
+      : error.code === 'schema-invalid' || error.message === 'data-invalid'
+        ? 'Dữ liệu gia phả có định dạng chưa hợp lệ.'
+        : error.code === 'decrypt-failed'
+          ? 'Mật khẩu Viewer không đúng hoặc data.enc không thể giải mã.'
+          : 'Thông tin đăng nhập chưa đúng hoặc dữ liệu không thể giải mã.';
     elements.password.select();
   } finally { setLoginLoading(false); }
 }
