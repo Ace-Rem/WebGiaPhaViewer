@@ -148,7 +148,7 @@ apiBaseUrl: 'https://family-tree-api.acerem.workers.dev',
 enabled: true
 ```
 
-Luồng tải là `GET /version` → `GET /data?version=...` → kiểm tra envelope → decrypt PBKDF2/AES-GCM → validate schema. Timeout request là 8 giây. HTTP lỗi, CORS, timeout, dữ liệu rỗng/hỏng, decrypt lỗi hoặc schema lỗi đều chuyển tự động sang `./data.enc`. File `data.enc` trong repository này là fallback bắt buộc và không được xóa.
+Luồng tải là `GET /version` → `GET /data?version=...` → kiểm tra envelope → decrypt PBKDF2/AES-GCM → validate schema. Hai request latest dùng `cache: no-store`, timeout là 8 giây. HTTP lỗi, CORS, timeout, dữ liệu rỗng/hỏng, decrypt lỗi hoặc schema lỗi đều chuyển tự động sang `./data.enc`. File `data.enc` trong repository này là fallback bắt buộc và không được xóa.
 
 Ảnh online dùng cùng filename hiện tại qua `GET /images/<filename>?version=<contentHash>`. Nếu ảnh không tồn tại, avatar initials hiện như trước.
 

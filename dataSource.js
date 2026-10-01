@@ -90,7 +90,7 @@ export async function loadOnlineData() {
   if (!REMOTE_CONFIG.enabled) throw new Error('remote-disabled');
   const version = await loadVersion();
   const query = `?version=${encodeURIComponent(version.versionId)}`;
-  const response = await fetchWithTimeout(joinUrl(REMOTE_CONFIG.dataPath, query), { cache: 'default' });
+  const response = await fetchWithTimeout(joinUrl(REMOTE_CONFIG.dataPath, query), { cache: 'no-store' });
   if (!response.ok) throw taggedError('remote-http', `data-http-${response.status}`, { status: response.status });
   const payload = await response.text();
   try { assertEncryptedPayload(payload); } catch (error) { throw taggedError('remote-envelope-invalid', error.message, { cause: error }); }
@@ -101,7 +101,7 @@ export async function loadOnlineData() {
 export async function loadLocalFallback() {
   console.info('[Worker] local fallback ./data.enc');
   let response;
-  try { response = await fetch('./data.enc', { cache: 'default' }); } catch (error) { throw taggedError('local-fetch', 'data-unavailable', { cause: error }); }
+  try { response = await fetch('./data.enc', { cache: 'no-store' }); } catch (error) { throw taggedError('local-fetch', 'data-unavailable', { cause: error }); }
   if (!response.ok) throw taggedError('local-fetch', 'data-unavailable', { status: response.status });
   const payload = await response.text();
   try { assertEncryptedPayload(payload); } catch (error) { throw taggedError('local-envelope-invalid', error.message, { cause: error }); }
